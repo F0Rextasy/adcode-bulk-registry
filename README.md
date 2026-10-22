@@ -18,6 +18,7 @@
 [![License](https://img.shields.io/badge/license-MIT-6ea8fe?style=for-the-badge)](LICENSE)
 [![Models](https://img.shields.io/badge/models-4%20served-412991?style=for-the-badge)](https://adcode.bluethenics.com/v1/ai/tagflow/config)
 [![9Router](https://img.shields.io/badge/9Router-connector-8B5CF6?style=for-the-badge)](#-connect-to-9router)
+[![OmniRoute](https://img.shields.io/badge/OmniRoute-connector-8B5CF6?style=for-the-badge)](#-connect-to-omniroute)
 [![X](https://img.shields.io/badge/X-%40bigbullapp-000000?style=for-the-badge&logo=x&logoColor=white)](https://x.com/bigbullapp)
 
 [🛠 Quick start](#-quick-start) · [🎁 Free tier](#-free-tier--how-much-you-get) · [🤖 Models](#-models--all-4-of-them) · [🧪 Use the API](#-how-to-use-the-api) · [✅ Verified](#-verified-working--every-key-is-tested) · [🧭 How it works](#-how-it-works) · [🔌 9Router](#-connect-to-9router) · [⚙️ Options](#️-cli-options) · [🛰️ Proxies](#️-behind-a-proxy) · [🐞 Issues](#-issues)
@@ -220,6 +221,17 @@ node src/cli.js --connect-9router         # terminal 2 — idempotent
 
 Defaults: `--9router-base http://localhost:20128`, `--9router-password 123456`, `--9router-prefix adcode`, `--9router-name ADCode`, `--bridge-url http://127.0.0.1:8917/v1`. Models are served as `adcode/<model id>`, e.g. `adcode/tagflow-code-27b` — verified `200` through the router.
 
+
+## 🔌 Connect to OmniRoute
+
+[OmniRoute](https://omniroute.online) is a self-hosted, OpenAI-compatible router. ADCode has no key to register, so the connector registers **the bridge** as the provider endpoint:
+
+```bash
+node src/bridge.js --port 8917            # terminal 1 (leave it running)
+node src/cli.js --connect-omniroute         # terminal 2 — idempotent
+```
+
+Defaults: `--omniroute-base http://localhost:20128`, `--omniroute-password 123456`, `--omniroute-prefix adcode`, `--omniroute-name ADCode`, `--bridge-url http://127.0.0.1:8917/v1`. Models are served as `adcode/<model id>`, e.g. `adcode/tagflow-code-27b` — verified `200` through the router.
 ## 🔑 What one account gets you
 
 > There is **no API key** to hand out here — ADCode's free tier is bound to a verified Firebase account. One mint = one account = one credential.
