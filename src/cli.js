@@ -70,6 +70,9 @@ const {
 const ROOT = path.basename(__dirname) === 'src' ? path.resolve(__dirname, '..') : __dirname;
 const KEYS_FILE = path.join(ROOT, 'keys.txt');
 const ACCOUNTS_FILE = path.join(ROOT, 'accounts.jsonl');
+const DEAD_FILE = path.join(ROOT, 'keys-dead.txt');
+/** Dead keys from the last verify run (one `key<TAB># reason` per line). */
+const writeDead = (dead) => fs.writeFileSync(DEAD_FILE, dead.map((d) => `${d.key}\t# ${d.why}`).join('\n') + (dead.length ? '\n' : ''));
 
 const BASE = 'https://adcode.bluethenics.com';
 const IDT = 'https://identitytoolkit.googleapis.com/v1/accounts:';
@@ -420,6 +423,7 @@ async function verifyOnly(exits) {
   }
   const list = LIMIT > 0 ? keys.slice(0, LIMIT) : keys;
   let live = 0;
+  const dead = [];
   for (let i = 0; i < list.length; i++) {
     const known = accounts.get(list[i]) || {};
     // A dead exit or a mid-request socket hang-up is not a dead credential:
@@ -431,6 +435,7 @@ async function verifyOnly(exits) {
         const { idToken } = await idTokenFrom(exit, { email: known.email, password: known.password, refreshToken: list[i] });
         const g = await chatGate(exit, idToken, MODEL);
         if (g.ok) live++;
+        else dead.push({ key: list[i], why: `chat ${g.status}` });
         console.log(`  ${g.ok ? '✔' : '✘'} ${String(i + 1).padStart(2, '0')}/${list.length} ${list[i].slice(0, 10)}… ${known.email || '(grant only)'} chat=${g.status}${g.ok ? '' : ` ${g.sample.replace(/\s+/g, ' ').slice(0, 90)}`}`);
         last = g;
       } catch (e) {
@@ -438,8 +443,9 @@ async function verifyOnly(exits) {
         if (t < TRIES - 1) log(`  ↻ retrying ${list[i].slice(0, 10)}… on the next exit: ${String(e.message).slice(0, 70)}`);
       }
     }
-    if (last instanceof Error) console.log(`  ✘ ${String(i + 1).padStart(2, '0')}/${list.length} ${list[i].slice(0, 10)}… ${String(last.message).slice(0, 90)}`);
+    if (last instanceof Error) { dead.push({ key: list[i], why: String(last.message).slice(0, 90) }); console.log(`  ✘ ${String(i + 1).padStart(2, '0')}/${list.length} ${list[i].slice(0, 10)}… ${String(last.message).slice(0, 90)}`); }
   }
+  writeDead(dead);
   console.log(`verify: ${live}/${list.length} credential(s) live${LIMIT > 0 && keys.length > list.length ? ` (limited; ${keys.length} in ${path.basename(KEYS_FILE)})` : ''}`);
   process.exit(live === list.length ? 0 : 1);
 }

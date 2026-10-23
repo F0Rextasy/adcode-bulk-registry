@@ -56,6 +56,7 @@ Los números anteriores provienen directamente del endpoint de configuración si
 
 ```bash
 curl -s https://adcode.bluethenics.com/v1/ai/tagflow/config
+
 # {"available":true,"defaultModel":"tagflow-code-27b",
 #  "models":[…4 models…],"requiresVerifiedAccount":true,"unlimited":true,
 #  "credits":{"sessionCredits":2000,"weeklyCredits":20000,"sessionHours":5}}

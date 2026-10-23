@@ -56,6 +56,7 @@ ADCode 是 Bluethenics 的 AI 代码编辑器。其源码公开（Apache-2.0：`
 
 ```bash
 curl -s https://adcode.bluethenics.com/v1/ai/tagflow/config
+
 # {"available":true,"defaultModel":"tagflow-code-27b",
 #  "models":[…4 models…],"requiresVerifiedAccount":true,"unlimited":true,
 #  "credits":{"sessionCredits":2000,"weeklyCredits":20000,"sessionHours":5}}
