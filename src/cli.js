@@ -46,7 +46,7 @@
  *   --boxes N        mailboxes tried per account (fresh alias each)         [3]
  *   --pool <file>    proxy list, one exit per line (env ADCODE_PROXIES)  [optional]
  *   --state <file>   bridge credential file to write          [credentials.json]
- *   --tries N        exits tried per account before giving up               [3]
+ *   --exits N        exits tried per account before giving up               [6]
  *   --timeout MS     per-request timeout                                [60000]
  *   --limit N        cap the credentials --verify-only walks (0 = all)       [0]
  *   --verify-only    re-check every credential in keys.txt with a live chat
@@ -80,7 +80,7 @@ const TOKEN_URL = 'https://securetoken.googleapis.com/v1/token';
 const TEMPTF = 'https://temp.tf';
 // Public web API key of the vendor Firebase project `adcode-idle` (shipped in the
 // ADCode desktop app, not a secret). Injected via env so the repo carries no key.
-const FB_KEY = process.env.ADCODE_WEB_API_KEY || '';
+const FB_KEY = process.env.ADCODE_WEB_API_KEY || 'AIzaSyATZzX5Fw2HjR34VxB3UQWTmljprA5uXqE'; // public Firebase web key (ships in ADCode's desktop app)
 const MODELS = ['tagflow-code-27b', 'heabsy-qwen38', 'heabsy-glm53-flash-unc', 'heabsy-mimo-v26-flash'];
 
 // ------------------------------------------------------------------- options
@@ -125,7 +125,7 @@ pool the tool connects DIRECTLY. The mailbox is always called directly.`);
 const COUNT = Math.max(1, parseInt(arg('count', '1'), 10) || 1);
 const CONC = Math.min(4, Math.max(1, parseInt(arg('conc', '1'), 10) || 1));
 const GAP_MS = Math.max(0, parseInt(arg('gap', '1500'), 10) || 0);
-const TRIES = Math.max(1, parseInt(arg('tries', '3'), 10) || 3);
+const EXITS = Math.max(1, parseInt(arg('exits', '6'), 10) || 6);
 const TIMEOUT_MS = Math.max(5000, parseInt(arg('timeout', '60000'), 10) || 60000);
 const MAIL_WINDOW_MS = Math.max(30, parseInt(arg('mail-window', '420'), 10) || 420) * 1000;
 const BOXES = Math.min(6, Math.max(1, parseInt(arg('boxes', '3'), 10) || 3));
@@ -164,6 +164,15 @@ function loadExits() {
   console.log(`pool: ${exits.length} exit(s) from ${poolFile}`);
   return exits;
 }
+/** A dead exit, not a panel verdict — the flow rotates to the next candidate. */
+const isExitError = (e) =>
+  /proxy connect failed|proxy CONNECT refused|proxy timeout|connect timeout|connect failed|ETIMEDOUT|ECONNREFUSED|ECONNRESET|ECONNABORTED|EPIPE|ENETUNREACH|EHOSTUNREACH|EAI_AGAIN|socket hang up|secureConnect|TLS|handshake/i.test(
+    String((e && e.message) || e),
+  );
+
+/** `host:port` of the exit in play, or `direct` when the pool is empty. */
+const exitLabel = (e) => (e ? `${e.host}:${e.port}` : 'direct');
+
 
 /** Every exit that can reach both the panel and the Firebase identity API wins. */
 async function screen(exits) {
@@ -365,30 +374,46 @@ async function mintOne(exit) {
 }
 
 async function mint(exits) {
-  log(`adcode · ${COUNT} account(s) · conc ${CONC} · model ${MODEL} · exits ${exits.filter(Boolean).length || 'direct'} · credentials land in ${path.basename(KEYS_FILE)}`);
+  const routes = exits[0] === null ? 1 : EXITS;
+  log(`adcode · ${COUNT} account(s) · conc ${CONC} · model ${MODEL} · exits ${exits.filter(Boolean).length || 'direct'} · up to ${routes} per account · credentials land in ${path.basename(KEYS_FILE)}`);
   let made = 0;
+  let transportDead = 0;
   for (let round = 0; round < COUNT; round += CONC) {
     const jobs = [];
     for (let k = 0; k < CONC && round + k < COUNT; k++) {
       const i = round + k;
       jobs.push((async () => {
         let lastErr = null;
-        for (let t = 0; t < TRIES; t++) {
-          const exit = exits[(i + t) % exits.length];
+        let lastWasExit = false;
+        for (let a = 0; a < routes; a++) {
+          const exit = exits[(i + a) % exits.length];
+          lastWasExit = false;
           try {
             await mintOne(exit);
             made++;
             return;
           } catch (e) {
             lastErr = e;
-            log(`account ${i + 1} attempt ${t + 1}: ${String(e.message).slice(0, 130)}`);
+            lastWasExit = isExitError(e);
+            if (lastWasExit) {
+              const where = exit ? `exit ${a + 1}/${routes} ${exitLabel(exit)}` : `direct attempt ${a + 1}/${routes}`;
+              log(`account ${i + 1}: ${where} dead (${String(e.message).slice(0, 70)})${exit ? ' → next exit' : ''}`);
+            } else {
+              log(`account ${i + 1} attempt ${a + 1}: ${String(e.message).slice(0, 130)}`);
+            }
           }
         }
+        if (lastWasExit) transportDead++;
         log(`account ${i + 1} ✘ ${lastErr ? String(lastErr.message).slice(0, 140) : 'failed'}`);
       })());
     }
     await Promise.all(jobs);
     if (GAP_MS) await sleep(GAP_MS);
+  }
+  if (!made && transportDead === COUNT) {
+    const route = exits[0] === null ? 'direct mode (no proxy list)' : `${exits.length}-exit pool`;
+    console.error(`[fatal] no usable route — ${COUNT} account(s) × ${routes} candidate(s) over ${route}: every attempt died at the transport layer.`);
+    process.exit(1);
   }
   log(`done — ${made}/${COUNT} credential(s) written to ${KEYS_FILE}`);
   process.exit(made ? 0 : 1);
@@ -427,9 +452,9 @@ async function verifyOnly(exits) {
   for (let i = 0; i < list.length; i++) {
     const known = accounts.get(list[i]) || {};
     // A dead exit or a mid-request socket hang-up is not a dead credential:
-    // the same token is re-tried on the next exit (--tries, default 3).
+    // the same token is re-tried on the next exit (--exits, default 6).
     let last = null;
-    for (let t = 0; t < TRIES && last === null; t++) {
+    for (let t = 0; t < EXITS && last === null; t++) {
       const exit = exits[(i + t) % exits.length];
       try {
         const { idToken } = await idTokenFrom(exit, { email: known.email, password: known.password, refreshToken: list[i] });
@@ -440,7 +465,7 @@ async function verifyOnly(exits) {
         last = g;
       } catch (e) {
         last = e;
-        if (t < TRIES - 1) log(`  ↻ retrying ${list[i].slice(0, 10)}… on the next exit: ${String(e.message).slice(0, 70)}`);
+        if (t < EXITS - 1) log(`  ↻ retrying ${list[i].slice(0, 10)}… on the next exit: ${String(e.message).slice(0, 70)}`);
       }
     }
     if (last instanceof Error) { dead.push({ key: list[i], why: String(last.message).slice(0, 90) }); console.log(`  ✘ ${String(i + 1).padStart(2, '0')}/${list.length} ${list[i].slice(0, 10)}… ${String(last.message).slice(0, 90)}`); }
