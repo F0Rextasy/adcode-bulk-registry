@@ -49,6 +49,7 @@
  *   --exits N        exits tried per account before giving up               [6]
  *   --timeout MS     per-request timeout                                [60000]
  *   --limit N        cap the credentials --verify-only walks (0 = all)       [0]
+ *   --auto           headless-friendly alias (launcher passes it; no prompts ever)   
  *   --verify-only    re-check every credential in keys.txt with a live chat
  *   --screen         only test the proxy list against ADCode + Firebase
  *   --connect-9router  register the bundled bridge on a local 9Router
@@ -134,6 +135,7 @@ const LIMIT = Math.max(0, parseInt(arg('limit', '0'), 10) || 0);
 // `--state` is resolved against the working directory; the default credential
 // file lives next to this script (and next to `keys.txt` / `accounts.jsonl`).
 const STATE_FILE = path.resolve(arg('state', process.env.ADCODE_STATE || path.join(ROOT, 'credentials.json')));
+const AUTO = has('auto');
 const VERIFY_ONLY = has('verify-only');
 const SCREEN = has('screen');
 const CONNECT_9ROUTER = has('connect-9router');
